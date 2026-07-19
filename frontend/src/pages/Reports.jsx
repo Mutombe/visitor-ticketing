@@ -1,21 +1,18 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Ticket as TicketIcon, UsersThree, CurrencyDollar, Car, HourglassHigh, HouseLine,
 } from "@phosphor-icons/react";
 import { api, fmtTime, money, PAYMENTS } from "../api";
-import { MixBar, Spinner, Stat } from "../components/ui.jsx";
+import { MixBar, Stat } from "../components/ui.jsx";
+import { ReportsSkeleton } from "../components/skeletons.jsx";
+import { useCached } from "../useCached.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Reports() {
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
-  const [d, setD] = useState(null);
-
-  useEffect(() => {
-    setD(null);
-    api.reports({ from, to }).then(setD).catch(() => setD(false));
-  }, [from, to]);
+  const { data: d, error } = useCached(`reports:${from}:${to}`, () => api.reports({ from, to }));
 
   return (
     <div className="container section stack fade-in" style={{ "--gap": "20px" }}>
@@ -31,8 +28,8 @@ export default function Reports() {
         </div>
       </div>
 
-      {d === null && <Spinner />}
-      {d === false && <div className="chip red">Could not load reports.</div>}
+      {!d && !error && <ReportsSkeleton />}
+      {error && !d && <div className="chip red">Could not load reports.</div>}
       {d && (
         <>
           <div className="stats">

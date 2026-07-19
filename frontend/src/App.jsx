@@ -3,13 +3,20 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Storefront, QrCode, ClockCounterClockwise, ChartBar,
 } from "@phosphor-icons/react";
-import { PAYMENTS } from "./api";
+import { api, PAYMENTS } from "./api";
+import { setCached } from "./cache";
 
 export default function App() {
   const { pathname } = useLocation();
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [pathname]);
+
+  // Warm the API (free-tier backends sleep) and pre-fill the config cache
+  // so the gate screen paints instantly from any entry page.
+  useEffect(() => {
+    api.config().then((c) => setCached("config", c)).catch(() => {});
+  }, []);
 
   return (
     <>

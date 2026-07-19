@@ -21,15 +21,18 @@ export default function Scan() {
     return () => clearInterval(id);
   }, []);
 
+  const [checking, setChecking] = useState(false);
+
   async function lookup(raw) {
     const ref = String(raw || code).trim().replace(/^GATEPASS:/, "");
     if (!ref) return;
-    setErr(""); setDone(""); setT(null);
+    setErr(""); setDone(""); setT(null); setChecking(true);
     try {
       const found = await api.ticket(ref);
       setT(found);
       setFeeMethod(found.payment_method || "CASH");
     } catch (e) { setErr(e.message); }
+    setChecking(false);
   }
 
   async function recordExit() {
@@ -67,6 +70,8 @@ export default function Scan() {
       </div>
 
       {err && <div className="chip red">{err}</div>}
+
+      {checking && <div className="skel" style={{ height: 200, borderRadius: "var(--radius-lg)" }} />}
 
       {t && (
         <div className={`scan-result stack ${exited ? "neutral" : valid && !feeDue ? "ok" : expired || feeDue ? (feeDue ? "warn" : "bad") : "neutral"}`}

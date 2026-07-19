@@ -6,16 +6,16 @@ import {
   ChatText, MagnifyingGlass, Plus,
 } from "@phosphor-icons/react";
 import { api, fmtDate, fmtTime, fmtRemaining, money, remainingSecs, ticketUrl, waShare, waTo, smsTo } from "../api";
-import { Empty, Spinner } from "../components/ui.jsx";
+import { Empty } from "../components/ui.jsx";
+import { TicketSkeleton } from "../components/skeletons.jsx";
+import { useCached } from "../useCached.js";
 
 export default function TicketPage() {
   const { qr } = useParams();
-  const [t, setT] = useState(null);
+  const { data: t, error } = useCached(`ticket:${qr}`, () => api.ticket(qr));
   const [busy, setBusy] = useState("");
   const [, tick] = useState(0);
   const ref = useRef(null);
-
-  useEffect(() => { api.ticket(qr).then(setT).catch(() => setT(false)); }, [qr]);
 
   // live countdown
   useEffect(() => {
@@ -76,7 +76,7 @@ export default function TicketPage() {
     setBusy("");
   }
 
-  if (t === false) return (
+  if (error && !t) return (
     <div className="container section" style={{ maxWidth: 520 }}>
       <Empty icon={<MagnifyingGlass size={26} weight="bold" />} title="Ticket not found"
         action={<Link to="/history" className="btn btn-primary">Search history</Link>}>
@@ -84,7 +84,7 @@ export default function TicketPage() {
       </Empty>
     </div>
   );
-  if (!t) return <Spinner />;
+  if (!t) return <TicketSkeleton />;
 
   const secs = t.status === "ACTIVE" ? remainingSecs(t.expires_at) : 0;
   const expired = t.status === "ACTIVE" && secs <= 0;

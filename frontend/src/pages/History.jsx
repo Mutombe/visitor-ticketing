@@ -2,24 +2,29 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MagnifyingGlass, ClockCounterClockwise } from "@phosphor-icons/react";
 import { api, fmtTime, money, remainingSecs, fmtRemaining } from "../api";
-import { Empty, Spinner } from "../components/ui.jsx";
+import { Empty } from "../components/ui.jsx";
+import { TableSkeleton } from "../components/skeletons.jsx";
+import { useCached } from "../useCached.js";
 
 const STATES = [
   ["", "All"], ["VALID", "Inside"], ["EXPIRED", "Overdue"], ["EXITED", "Exited"],
 ];
 
 export default function History() {
-  const [rows, setRows] = useState(null);
   const [q, setQ] = useState("");
+  const [qd, setQd] = useState("");   // debounced search term
   const [state, setState] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
-    const id = setTimeout(() => {
-      api.tickets({ q, state, date }).then(setRows).catch(() => setRows([]));
-    }, 250);
+    const id = setTimeout(() => setQd(q), 250);
     return () => clearTimeout(id);
-  }, [q, state, date]);
+  }, [q]);
+
+  const { data: rows } = useCached(
+    `hist:${date}:${state}:${qd}`,
+    () => api.tickets({ q: qd, state, date })
+  );
 
   return (
     <div className="container section stack fade-in" style={{ "--gap": "18px" }}>
@@ -45,7 +50,7 @@ export default function History() {
           </div>
         </div>
 
-        {!rows ? <Spinner /> : rows.length === 0 ? (
+        {!rows ? <TableSkeleton /> : rows.length === 0 ? (
           <Empty icon={<ClockCounterClockwise size={26} weight="bold" />} title="No tickets">
             Nothing matches this search for {date}.
           </Empty>

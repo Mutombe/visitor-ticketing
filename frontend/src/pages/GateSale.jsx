@@ -4,11 +4,14 @@ import {
   User, Baby, Car, Phone, Ticket as TicketIcon, ArrowRight, Clock,
 } from "@phosphor-icons/react";
 import { api, money } from "../api";
-import { PayPicker, Qty, Spinner } from "../components/ui.jsx";
+import { PayPicker, Qty } from "../components/ui.jsx";
+import { GateSkeleton } from "../components/skeletons.jsx";
+import { useCached } from "../useCached.js";
+import { setCached } from "../cache.js";
 
 export default function GateSale() {
   const nav = useNavigate();
-  const [cfg, setCfg] = useState(null);
+  const { data: cfg, error: cfgErr } = useCached("config", api.config);
   const [err, setErr] = useState("");
 
   const [pkg, setPkg] = useState(null);
@@ -23,13 +26,12 @@ export default function GateSale() {
   const [method, setMethod] = useState("CASH");
   const [busy, setBusy] = useState(false);
 
+  // default selections once config lands (instant from cache on revisit)
   useEffect(() => {
-    api.config().then((c) => {
-      setCfg(c);
-      setPkg(c.packages[0] || null);
-      setOpt(c.time_options[0] || null);
-    }).catch((e) => setErr(e.message));
-  }, []);
+    if (!cfg) return;
+    setPkg((p) => p || cfg.packages[0] || null);
+    setOpt((o) => o || cfg.time_options[0] || null);
+  }, [cfg]);
 
   const totalUsd = useMemo(() => {
     if (!pkg) return 0;
@@ -54,6 +56,7 @@ export default function GateSale() {
         vehicle_reg: reg.trim(), vehicle_type: vtype.trim(),
         currency, payment_method: method,
       });
+      setCached(`ticket:${t.qr_token}`, t);   // ticket page paints instantly
       nav(`/t/${t.qr_token}`);
     } catch (e) {
       setErr(e.message);
@@ -61,10 +64,10 @@ export default function GateSale() {
     }
   }
 
-  if (err && !cfg) return (
-    <div className="container section"><div className="chip red">{err}</div></div>
+  if (cfgErr && !cfg) return (
+    <div className="container section"><div className="chip red">{cfgErr.message}</div></div>
   );
-  if (!cfg) return <Spinner />;
+  if (!cfg) return <GateSkeleton />;
 
   return (
     <div className="container section stack fade-in" style={{ "--gap": "22px" }}>
