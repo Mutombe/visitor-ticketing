@@ -1,0 +1,35 @@
+# Render Blueprint — Django API + Vite static frontend.
+# Fill the `sync: false` env vars (DATABASE_URL → Neon) in the dashboard.
+services:
+  - type: web
+    name: gatepass-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --no-input && python manage.py migrate && python manage.py seed --if-empty"
+    startCommand: "gunicorn config.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.3"
+      - key: DEBUG
+        value: "0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL          # Neon connection string
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://gatepass-frontend.onrender.com
+
+  - type: web
+    name: gatepass-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://gatepass-backend.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

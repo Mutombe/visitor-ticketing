@@ -1,0 +1,191 @@
+"""
+Gatepass — visitor gate ticketing domain.
+
+    Attendant ──issues──> Ticket (party of adults+children, a Package,
+                          a timed duration, optional vehicle) with a QR.
+    At exit the QR is scanned: valid / time remaining / expired, and an
+    overstay fee is charged per started half-hour past expiry.
+"""
+import math
+import secrets
+import uuid
+from datetime import time, timedelta
+from decimal import Decimal
+
+from django.db import models
+from django.utils import timezone
+
+
+class Currency(models.TextChoices):
+    USD = "USD", "US Dollar"
+    ZIG = "ZIG", "Zimbabwe Gold (ZiG)"
+
+
+class PaymentMethod(models.TextChoices):
+    CASH = "CASH", "Cash"
+    ECOCASH = "ECOCASH", "EcoCash"
+    ONEMONEY = "ONEMONEY", "OneMoney"
+    INNBUCKS = "INNBUCKS", "InnBucks"
+    OMARI = "OMARI", "O'mari"
+    ZIPIT = "ZIPIT", "ZimSwitch"
+    CARD = "CARD", "Visa / Mastercard"
+
+
+def _token():
+    return uuid.uuid4().hex
+
+
+def _number():
+    return "GP-" + secrets.token_hex(3).upper()
+
+
+class GateConfig(models.Model):
+    """Singleton venue settings (pk=1)."""
+
+    venue_name = models.CharField(max_length=120, default="Gatepass Leisure Park")
+    venue_city = models.CharField(max_length=80, default="Harare")
+    zig_per_usd = models.DecimalField(max_digits=12, decimal_places=2, default=30)
+    closing_time = models.TimeField(default=time(18, 0))  # full-day tickets expire here
+
+    class Meta:
+        verbose_name = "Gate settings"
+
+    def __str__(self):
+        return self.venue_name
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class Package(models.Model):
+    name = models.CharField(max_length=80)               # Pool & Picnic / Game Park…
+    description = models.CharField(max_length=200, blank=True)
+    emoji = models.CharField(max_length=8, default="🎟️")
+    adult_price_usd = models.DecimalField(max_digits=10, decimal_places=2)
+    child_price_usd = models.DecimalField(max_digits=10, decimal_places=2)
+    vehicle_fee_usd = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    overstay_rate_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, default=2,
+        help_text="Charged per started 30 minutes past expiry (whole party).",
+    )
+    active = models.BooleanField(default=True)
+    sort = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort", "adult_price_usd"]
+
+    def __str__(self):
+        return self.name
+
+
+class TimeOption(models.Model):
+    label = models.CharField(max_length=40)  # "2 hours" / "Full day"
+    minutes = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Blank = full day (expires at closing time)."
+    )
+    active = models.BooleanField(default=True)
+    sort = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort", "id"]
+
+    def __str__(self):
+        return self.label
+
+
+class Ticket(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        EXITED = "EXITED", "Exited"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    number = models.CharField(max_length=16, unique=True, default=_number, db_index=True)
+    qr_token = models.CharField(max_length=64, unique=True, default=_token)
+
+    package = models.ForeignKey(Package, related_name="tickets", on_delete=models.PROTECT)
+    duration_label = models.CharField(max_length=40)          # snapshot of TimeOption
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+
+    adults = models.PositiveSmallIntegerField(default=1)
+    children = models.PositiveSmallIntegerField(default=0)
+    visitor_name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=32, blank=True)
+    vehicle_reg = models.CharField(max_length=20, blank=True)
+    vehicle_type = models.CharField(max_length=40, blank=True)
+
+    currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.USD)
+    payment_method = models.CharField(max_length=12, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
+    zig_per_usd = models.DecimalField(max_digits=12, decimal_places=2, default=30)  # snapshot
+    total_usd = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)  # in `currency`
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    exited_at = models.DateTimeField(null=True, blank=True)
+
+    overstay_fee_usd = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    overstay_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0)  # in `currency`
+    overstay_method = models.CharField(max_length=12, choices=PaymentMethod.choices, blank=True)
+
+    issued_by = models.CharField(max_length=80, blank=True)  # attendant name
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        return f"{self.number} · {self.package.name}"
+
+    @property
+    def visitors(self):
+        return self.adults + self.children
+
+    @staticmethod
+    def expiry_for(minutes, config, now=None):
+        now = now or timezone.now()
+        if minutes:
+            return now + timedelta(minutes=minutes)
+        close = timezone.localtime(now).replace(
+            hour=config.closing_time.hour, minute=config.closing_time.minute,
+            second=0, microsecond=0,
+        )
+        return max(close, now)  # issued after closing → expires immediately
+
+    # --- live state (what the exit scanner shows) ---------------------------
+    @property
+    def remaining_seconds(self):
+        if self.status != self.Status.ACTIVE:
+            return 0
+        return max(int((self.expires_at - timezone.now()).total_seconds()), 0)
+
+    @property
+    def overstay_minutes(self):
+        end = self.exited_at or timezone.now()
+        over = (end - self.expires_at).total_seconds() / 60
+        return max(int(math.ceil(over)), 0)
+
+    def overstay_fee_due_usd(self, at=None):
+        """Fee for time past expiry — per started half-hour, whole party."""
+        end = at or self.exited_at or timezone.now()
+        over_min = (end - self.expires_at).total_seconds() / 60
+        if over_min <= 0:
+            return Decimal("0")
+        blocks = math.ceil(over_min / 30)
+        return blocks * self.package.overstay_rate_usd
+
+    def to_currency(self, usd_amount):
+        if self.currency == Currency.ZIG:
+            return (Decimal(usd_amount) * self.zig_per_usd).quantize(Decimal("0.01"))
+        return Decimal(usd_amount).quantize(Decimal("0.01"))
+
+    def record_exit(self, method=""):
+        fee_usd = self.overstay_fee_due_usd()
+        self.exited_at = timezone.now()
+        self.status = self.Status.EXITED
+        self.overstay_fee_usd = fee_usd
+        self.overstay_fee = self.to_currency(fee_usd)
+        if fee_usd > 0:
+            self.overstay_method = method or self.payment_method
+        self.save()
