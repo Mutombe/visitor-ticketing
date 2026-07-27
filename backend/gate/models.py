@@ -12,8 +12,24 @@ import uuid
 from datetime import time, timedelta
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
+
+
+class Role(models.TextChoices):
+    ADMIN = "ADMIN", "Administrator"          # everything incl. settings & staff
+    MANAGER = "MANAGER", "Manager"            # reports + all gate operations
+    CASHIER = "CASHIER", "Gate cashier"       # issue tickets, scan, children
+    SECURITY = "SECURITY", "Security"         # scan exits, children
+
+
+class Profile(models.Model):
+    user = models.OneToOneField(User, related_name="profile", on_delete=models.CASCADE)
+    role = models.CharField(max_length=10, choices=Role.choices, default=Role.CASHIER)
+
+    def __str__(self):
+        return f"{self.user.username} · {self.role}"
 
 
 class Currency(models.TextChoices):
@@ -46,6 +62,10 @@ class GateConfig(models.Model):
     venue_city = models.CharField(max_length=80, default="Harare")
     zig_per_usd = models.DecimalField(max_digits=12, decimal_places=2, default=30)
     closing_time = models.TimeField(default=time(18, 0))  # full-day tickets expire here
+    gateway_key = models.CharField(
+        max_length=64, default=_token,
+        help_text="Shared secret BLE gateways send as X-Gateway-Key.",
+    )
 
     class Meta:
         verbose_name = "Gate settings"
@@ -208,3 +228,70 @@ class Ticket(models.Model):
         if fee_usd > 0:
             self.overstay_method = method or self.payment_method
         self.save()
+        # returning the party's wristbands is implied by leaving
+        BandAssignment.objects.filter(ticket=self, returned_at__isnull=True).update(
+            returned_at=timezone.now())
+
+
+# --- Child safety (BLE wristbands) -------------------------------------------
+class Zone(models.Model):
+    """A monitored area — one or more BLE gateways report into a zone."""
+
+    name = models.CharField(max_length=80, unique=True)
+    sort = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Wristband(models.Model):
+    """A reusable BLE wristband, identified by the code printed on it."""
+
+    code = models.CharField(max_length=40, unique=True)  # printed code / BLE MAC
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return self.code
+
+    @property
+    def current_assignment(self):
+        return self.assignments.filter(returned_at__isnull=True).first()
+
+
+class BandAssignment(models.Model):
+    """A wristband worn by one child for the duration of a visit."""
+
+    wristband = models.ForeignKey(Wristband, related_name="assignments", on_delete=models.CASCADE)
+    ticket = models.ForeignKey(Ticket, related_name="bands", on_delete=models.CASCADE)
+    child_name = models.CharField(max_length=120)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-assigned_at"]
+
+    def __str__(self):
+        return f"{self.child_name} · {self.wristband.code}"
+
+    @property
+    def last_sighting(self):
+        return (Sighting.objects.filter(wristband=self.wristband, seen_at__gte=self.assigned_at)
+                .select_related("zone").order_by("-seen_at").first())
+
+
+class Sighting(models.Model):
+    """A gateway detected a wristband in a zone."""
+
+    wristband = models.ForeignKey(Wristband, related_name="sightings", on_delete=models.CASCADE)
+    zone = models.ForeignKey(Zone, related_name="sightings", on_delete=models.CASCADE)
+    gateway_id = models.CharField(max_length=64, blank=True)
+    seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-seen_at"]

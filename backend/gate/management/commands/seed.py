@@ -3,11 +3,25 @@ import random
 from datetime import timedelta
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from gate.models import GateConfig, Package, Ticket, TimeOption
+from gate.models import (
+    BandAssignment, GateConfig, Package, Profile, Role, Sighting, Ticket,
+    TimeOption, Wristband, Zone,
+)
 from gate.serializers import IssueTicketSerializer
+
+ZONES = ["Museum Hall", "Flag Park", "ZDF Park", "Indoor Play",
+         "Outdoor Play", "Cinema", "Food Court"]
+
+STAFF = [
+    ("admin", "Admin", Role.ADMIN),
+    ("manager", "Manager", Role.MANAGER),
+    ("cashier", "Gate Cashier", Role.CASHIER),
+    ("security", "Security", Role.SECURITY),
+]
 
 # Max Fun Entertainment — packages from the director.
 PACKAGES = [
@@ -75,6 +89,21 @@ class Command(BaseCommand):
         config.venue_name = "Max Fun Entertainment"
         config.save()
 
+        # Staff accounts (username123 passwords — change them in Settings!)
+        for username, name, role in STAFF:
+            user, made = User.objects.get_or_create(
+                username=username, defaults={"first_name": name})
+            if made:
+                user.set_password(f"{username}123")
+                user.save()
+            Profile.objects.get_or_create(user=user, defaults={"role": role})
+
+        # Zones + a pool of wristbands (operational data, kept on reseed)
+        for i, z in enumerate(ZONES):
+            Zone.objects.get_or_create(name=z, defaults={"sort": i})
+        for i in range(1, 13):
+            Wristband.objects.get_or_create(code=f"MFB-{i:03d}")
+
         Ticket.objects.all().delete()
         Package.objects.all().delete()
         TimeOption.objects.all().delete()
@@ -84,7 +113,8 @@ class Command(BaseCommand):
 
         if opts["no_tickets"]:
             self.stdout.write(self.style.SUCCESS(
-                f"Seeded {len(packages)} packages and {len(times)} time options (no tickets)."))
+                f"Seeded {len(packages)} packages, {len(times)} time options, "
+                f"{len(STAFF)} staff, {len(ZONES)} zones, 12 wristbands (no tickets)."))
             return
 
         now = timezone.now()
@@ -137,5 +167,28 @@ class Command(BaseCommand):
                         )
                 made += 1
 
+        # Wristbands on children of currently-active tickets, with a sighting trail
+        Sighting.objects.all().delete()
+        kids = ["Tino", "Rufaro", "Anesu", "Makanaka", "Tadiwa", "Shamiso", "Kupa", "Nyarai"]
+        zones = list(Zone.objects.all())
+        bands = list(Wristband.objects.all())
+        banded = 0
+        for t in Ticket.objects.filter(status=Ticket.Status.ACTIVE, children__gt=0,
+                                       expires_at__gte=now)[:5]:
+            for _ in range(min(t.children, 2)):
+                if not bands:
+                    break
+                band = bands.pop(0)
+                a = BandAssignment.objects.create(
+                    wristband=band, ticket=t, child_name=random.choice(kids))
+                BandAssignment.objects.filter(pk=a.pk).update(assigned_at=t.issued_at)
+                walk = random.sample(zones, k=min(3, len(zones)))
+                for j, z in enumerate(walk):
+                    Sighting.objects.create(
+                        wristband=band, zone=z, gateway_id=f"gw-{z.name.lower().replace(' ', '-')}",
+                        seen_at=now - timedelta(minutes=(len(walk) - j) * random.randint(4, 15)))
+                banded += 1
+
         self.stdout.write(self.style.SUCCESS(
-            f"Seeded {len(packages)} packages, {len(times)} time options, {made} tickets."))
+            f"Seeded {len(packages)} packages, {len(times)} time options, {made} tickets, "
+            f"{banded} children on wristbands."))

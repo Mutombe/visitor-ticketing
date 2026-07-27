@@ -1,27 +1,34 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   QrCode, CheckCircle, XCircle, Timer, CurrencyDollar, Camera,
-  ArrowSquareOut, SignOut,
+  ArrowSquareOut, SignOut, HourglassHigh, UsersThree, Baby,
 } from "@phosphor-icons/react";
 import { api, fmtRemaining, fmtTime, money, remainingSecs, PAYMENTS } from "../api";
-import { PayPicker } from "../components/ui.jsx";
+import { PayPicker, Stat } from "../components/ui.jsx";
+import { getCached, setCached } from "../cache.js";
 
 export default function Scan() {
   const [code, setCode] = useState("");
   const [t, setT] = useState(null);        // looked-up ticket
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [feeMethod, setFeeMethod] = useState("CASH");
   const [done, setDone] = useState("");    // exit confirmation message
+  const [stats, setStats] = useState(() => getCached("security"));
   const [, tick] = useState(0);
 
-  useEffect(() => {
-    const id = setInterval(() => tick((n) => n + 1), 1000);
-    return () => clearInterval(id);
+  const refreshStats = useCallback(() => {
+    api.security().then((s) => { setCached("security", s); setStats(s); }).catch(() => {});
   }, []);
 
-  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    refreshStats();
+    const sid = setInterval(refreshStats, 15000);
+    const cid = setInterval(() => tick((n) => n + 1), 1000);
+    return () => { clearInterval(sid); clearInterval(cid); };
+  }, [refreshStats]);
 
   async function lookup(raw) {
     const ref = String(raw || code).trim().replace(/^GATEPASS:/, "");
@@ -42,6 +49,7 @@ export default function Scan() {
       const res = await api.exit(t.qr_token, { payment_method: feeMethod });
       setT(res.ticket);
       setDone(res.detail || "Exit recorded — gate open.");
+      refreshStats();
     } catch (e) { setErr(e.message); }
     setBusy(false);
   }
@@ -51,13 +59,23 @@ export default function Scan() {
   const valid = t?.status === "ACTIVE" && secs > 0;
   const exited = t?.status === "EXITED";
   const feeDue = t && Number(t.overstay_due) > 0 && t.status === "ACTIVE";
+  const unreturnedBands = (t?.bands || []).filter((b) => !b.returned);
 
   return (
-    <div className="container section stack fade-in" style={{ maxWidth: 640, "--gap": "18px" }}>
+    <div className="container section stack fade-in" style={{ maxWidth: 760, "--gap": "18px" }}>
       <div>
-        <span className="eyebrow">Exit gate</span>
-        <h1>Scan ticket</h1>
+        <span className="eyebrow">Security dashboard</span>
+        <h1>Exit gate</h1>
       </div>
+
+      {stats && (
+        <div className="stats">
+          <Stat v={stats.inside_visitors} k={<><UsersThree size={13} weight="fill" /> Visitors inside</>} />
+          <Stat v={stats.overdue_tickets} k={<><HourglassHigh size={13} weight="fill" /> Overdue inside</>} />
+          <Stat v={stats.children_banded} k={<><Baby size={13} weight="fill" /> Kids on wristbands</>} />
+          <Stat v={stats.exits_today} k={<><SignOut size={13} weight="bold" /> Exits today · {money(stats.overtime_today)} overtime</>} />
+        </div>
+      )}
 
       <div className="card card-p stack">
         <form className="row" onSubmit={(e) => { e.preventDefault(); lookup(); }}>
@@ -74,7 +92,7 @@ export default function Scan() {
       {checking && <div className="skel" style={{ height: 200, borderRadius: "var(--radius-lg)" }} />}
 
       {t && (
-        <div className={`scan-result stack ${exited ? "neutral" : valid && !feeDue ? "ok" : expired || feeDue ? (feeDue ? "warn" : "bad") : "neutral"}`}
+        <div className={`scan-result stack ${exited ? "neutral" : valid && !feeDue ? "ok" : feeDue ? "warn" : expired ? "bad" : "neutral"}`}
           style={{ "--gap": "14px" }}>
           <div className="spread">
             <span className="row" style={{ gap: 8, fontWeight: 700 }}>
@@ -113,6 +131,13 @@ export default function Scan() {
             </div>
           </div>
 
+          {unreturnedBands.length > 0 && t.status === "ACTIVE" && (
+            <div className="chip" style={{ background: "rgba(255,255,255,.16)", color: "#fff", border: "none", alignSelf: "flex-start" }}>
+              <Baby size={14} weight="fill" /> Collect wristband{unreturnedBands.length > 1 ? "s" : ""}:{" "}
+              {unreturnedBands.map((b) => `${b.code} (${b.child_name})`).join(", ")}
+            </div>
+          )}
+
           {feeDue && (
             <div className="card card-p stack" style={{ color: "var(--ink)" }}>
               <div className="spread">
@@ -142,6 +167,50 @@ export default function Scan() {
           </Link>
         </div>
       )}
+
+      {stats?.overdue?.length > 0 && (
+        <div className="card card-p stack">
+          <h3 className="row"><HourglassHigh weight="fill" color="var(--clay)" /> Expired but still inside</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Ticket</th><th>Package</th><th>Party</th><th>Over by</th><th>Owes</th></tr></thead>
+              <tbody>
+                {stats.overdue.map((o) => (
+                  <tr key={o.number} style={{ cursor: "pointer" }} onClick={() => lookup(o.qr_token)}>
+                    <td style={{ color: "var(--green-700)", fontWeight: 700 }}>{o.number}</td>
+                    <td>{o.package_emoji} {o.package_name}</td>
+                    <td>{o.adults}A{o.children ? ` + ${o.children}C` : ""}</td>
+                    <td>{fmtRemaining(o.overstay_minutes * 60)}</td>
+                    <td><strong>{money(o.overstay_due, o.currency)}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted" style={{ fontSize: ".8rem" }}>Tap a row to load it into the scanner.</p>
+        </div>
+      )}
+
+      {stats?.recent_exits?.length > 0 && (
+        <div className="card card-p stack">
+          <h3>Recent exits</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Ticket</th><th>Package</th><th>Out</th><th>Overtime</th></tr></thead>
+              <tbody>
+                {stats.recent_exits.map((o) => (
+                  <tr key={o.number}>
+                    <td className="muted">{o.number}</td>
+                    <td>{o.package_emoji} {o.package_name}</td>
+                    <td>{fmtTime(o.exited_at)}</td>
+                    <td>{Number(o.overstay_fee) > 0 ? money(o.overstay_fee, o.currency) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -153,6 +222,8 @@ function CameraScanner({ onScan }) {
   const [supported] = useState(() => "BarcodeDetector" in window);
   const videoRef = useRef(null);
   const lastRef = useRef({ text: "", at: 0 });
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;   // keep the camera loop stable across re-renders
 
   useEffect(() => {
     if (!on || !supported) return;
@@ -173,7 +244,7 @@ function CameraScanner({ onScan }) {
             const now = Date.now();
             if (text && (text !== lastRef.current.text || now - lastRef.current.at > 4000)) {
               lastRef.current = { text, at: now };
-              onScan(text);
+              onScanRef.current(text);
             }
           } catch { /* frame not ready */ }
           raf = requestAnimationFrame(loop);
@@ -186,7 +257,7 @@ function CameraScanner({ onScan }) {
       cancelAnimationFrame(raf);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [on, supported, onScan]);
+  }, [on, supported]);
 
   if (!supported) return null;
   return (

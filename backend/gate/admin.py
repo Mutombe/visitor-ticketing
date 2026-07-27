@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from .models import GateConfig, Package, Ticket, TimeOption
+from .models import (
+    BandAssignment, GateConfig, Package, Profile, Sighting, Ticket, TimeOption,
+    Wristband, Zone,
+)
+
+admin.site.register(Profile)
+admin.site.register(Zone)
+admin.site.register(Wristband)
+admin.site.register(BandAssignment)
+admin.site.register(Sighting)
 
 
 @admin.register(GateConfig)

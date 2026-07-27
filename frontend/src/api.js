@@ -1,11 +1,28 @@
 // Gatepass API client — visitor gate ticketing.
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
+const TOKEN_KEY = "gp_token";
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t) =>
+  t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
+
 async function req(path, opts = {}) {
+  const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Token ${token}` } : {}),
+      ...(opts.headers || {}),
+    },
     ...opts,
   });
+  if (res.status === 401 && token && !path.startsWith("/auth/")) {
+    // session expired — clear it and go back to login
+    setToken(null);
+    localStorage.removeItem("gp_user");
+    window.location.assign("/login");
+    throw new Error("Session expired — please sign in again.");
+  }
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {
@@ -25,14 +42,47 @@ const qs = (params) => {
 };
 
 export const api = {
+  // auth
+  login: (username, password) =>
+    req("/auth/login/", { method: "POST", body: JSON.stringify({ username, password }) }),
+  logout: () => req("/auth/logout/", { method: "POST" }),
+  me: () => req("/auth/me/"),
+  // gate
   config: () => req("/config/"),
   issueTicket: (payload) => req("/tickets/", { method: "POST", body: JSON.stringify(payload) }),
   tickets: (params) => req(`/tickets/${qs(params)}`),
   ticket: (ref) => req(`/tickets/${ref}/`),
   exit: (ref, payload) =>
     req(`/tickets/${ref}/exit/`, { method: "POST", body: JSON.stringify(payload || {}) }),
+  // security + child safety
+  security: () => req("/security/"),
+  children: (params) => req(`/children/${qs(params)}`),
+  assignBand: (ref, payload) =>
+    req(`/tickets/${ref}/bands/`, { method: "POST", body: JSON.stringify(payload) }),
+  returnBand: (code) => req(`/bands/${code}/return/`, { method: "POST" }),
+  // management
   reports: (params) => req(`/reports/${qs(params)}`),
+  // admin
+  admin: {
+    list: (kind) => req(`/admin/${kind}/`),
+    create: (kind, payload) =>
+      req(`/admin/${kind}/`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (kind, id, payload) =>
+      req(`/admin/${kind}/${id}/`, { method: "PATCH", body: JSON.stringify(payload) }),
+    remove: (kind, id) => req(`/admin/${kind}/${id}/`, { method: "DELETE" }),
+    config: () => req("/admin/config/"),
+    saveConfig: (payload) =>
+      req("/admin/config/", { method: "PATCH", body: JSON.stringify(payload) }),
+  },
 };
+
+// role helpers
+export const ROLES = {
+  ADMIN: "Administrator", MANAGER: "Manager", CASHIER: "Gate cashier", SECURITY: "Security",
+};
+export const canSell = (r) => ["ADMIN", "MANAGER", "CASHIER"].includes(r);
+export const canReport = (r) => ["ADMIN", "MANAGER"].includes(r);
+export const isAdmin = (r) => r === "ADMIN";
 
 // --- helpers -----------------------------------------------------------------
 export const money = (amount, currency = "USD") =>

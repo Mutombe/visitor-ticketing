@@ -43,6 +43,10 @@ export default function Reports() {
               k={<><HourglassHigh size={13} weight="fill" /> Overstay fees collected</>} />
             <Stat v={d.vehicles} k={<><Car size={13} weight="fill" /> Vehicles</>} />
           </div>
+          <div className="stats" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <Stat v={d.children_banded_now} k="Children on wristbands now" />
+            <Stat v={d.bands_used} k="Wristbands used in range" />
+          </div>
 
           <div className="grid-2">
             <div className="card card-p stack">
@@ -71,6 +75,16 @@ export default function Reports() {
                 );
               })}
             </div>
+          </div>
+
+          <div className="card card-p stack">
+            <h3>Staff activity</h3>
+            {(d.staff_activity || []).map((s) => (
+              <MixBar key={s.name}
+                left={<strong>{s.name}</strong>}
+                right={`${s.tickets} tickets · ${money(s.revenue_usd)}`}
+                pct={(s.tickets / (d.tickets || 1)) * 100} />
+            ))}
           </div>
 
           <div className="card card-p stack">

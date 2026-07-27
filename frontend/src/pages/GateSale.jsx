@@ -24,6 +24,7 @@ export default function GateSale() {
   const [vtype, setVtype] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [method, setMethod] = useState("CASH");
+  const [bands, setBands] = useState([]);   // [{code, child_name}] child wristbands
   const [busy, setBusy] = useState(false);
 
   // default selections once config lands (instant from cache on revisit)
@@ -60,6 +61,7 @@ export default function GateSale() {
         visitor_name: name.trim(), phone: phone.trim(),
         vehicle_reg: reg.trim(), vehicle_type: vtype.trim(),
         currency, payment_method: method,
+        bands: bands.filter((b) => b.code.trim()),
       });
       setCached(`ticket:${t.qr_token}`, t);   // ticket page paints instantly
       nav(`/t/${t.qr_token}`);
@@ -178,6 +180,46 @@ export default function GateSale() {
             </div>
             {reg.trim() && Number(pkg?.vehicle_fee_usd) > 0 && (
               <span className="chip gold">Vehicle fee {money(pkg.vehicle_fee_usd)} added</span>
+            )}
+
+            {children > 0 && (
+              <>
+                <div className="hair" />
+                <div className="spread">
+                  <strong className="row" style={{ gap: 8 }}>
+                    <Baby size={18} weight="fill" color="var(--green-600)" />
+                    Child safety wristbands
+                    <span className="muted" style={{ fontWeight: 400, fontSize: ".82rem" }}>(optional)</span>
+                  </strong>
+                  {bands.length < children && (
+                    <button type="button" className="link-btn" style={{ padding: 0 }}
+                      onClick={() => setBands((b) => [...b, { code: "", child_name: "" }])}>
+                      + Add wristband
+                    </button>
+                  )}
+                </div>
+                {bands.map((b, i) => (
+                  <div key={i} className="row" style={{ gap: 8 }}>
+                    <input className="input" style={{ maxWidth: 150 }} placeholder="Band code"
+                      value={b.code}
+                      onChange={(e) => setBands((all) =>
+                        all.map((x, j) => j === i ? { ...x, code: e.target.value.toUpperCase() } : x))} />
+                    <input className="input grow" placeholder="Child's name"
+                      value={b.child_name}
+                      onChange={(e) => setBands((all) =>
+                        all.map((x, j) => j === i ? { ...x, child_name: e.target.value } : x))} />
+                    <button type="button" className="qty" style={{ border: "1px solid var(--line-2)" }}
+                      onClick={() => setBands((all) => all.filter((_, j) => j !== i))}>
+                      <span style={{ padding: "0 12px", color: "var(--clay)", fontWeight: 700 }}>×</span>
+                    </button>
+                  </div>
+                ))}
+                {bands.length > 0 && (
+                  <p className="muted" style={{ fontSize: ".8rem" }}>
+                    Bluetooth gateways will track each band's zone — find any child on the Children screen.
+                  </p>
+                )}
+              </>
             )}
           </div>
 

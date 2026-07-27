@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   CheckCircle, Timer, WhatsappLogo, FilePdf, ImageSquare, Printer,
-  ChatText, MagnifyingGlass, Plus,
+  ChatText, MagnifyingGlass, Plus, EnvelopeSimple, Baby,
 } from "@phosphor-icons/react";
 import { api, fmtDate, fmtTime, fmtRemaining, money, remainingSecs, ticketUrl, waShare, waTo, smsTo } from "../api";
 import { Empty } from "../components/ui.jsx";
@@ -126,6 +126,10 @@ export default function TicketPage() {
               <Field label="Entered" value={`${fmtDate(t.issued_at)} · ${fmtTime(t.issued_at)}`} />
               <Field label="Expires" value={`${fmtTime(t.expires_at)} (${t.duration_label})`} />
               {t.vehicle_reg && <Field label="Vehicle" value={`${t.vehicle_reg}${t.vehicle_type ? ` · ${t.vehicle_type}` : ""}`} />}
+              {t.bands?.length > 0 && (
+                <Field label={<><Baby size={11} weight="fill" /> Wristbands</>}
+                  value={t.bands.map((b) => `${b.code} (${b.child_name})`).join(", ")} />
+              )}
               <Field label="Paid" value={`${money(t.total, t.currency)} · ${t.payment_method}`} />
             </div>
             <div className="bib-qr">
@@ -163,6 +167,10 @@ export default function TicketPage() {
             <ChatText weight="fill" /> SMS
           </a>
         </div>
+        <a className="btn btn-ghost btn-block"
+          href={`mailto:?subject=${encodeURIComponent(`Your ${t.venue_name} ticket ${t.number}`)}&body=${encodeURIComponent(share)}`}>
+          <EnvelopeSimple weight="fill" /> Email ticket
+        </a>
         <Link to="/" className="btn btn-ghost btn-block"><Plus weight="bold" /> New entry</Link>
       </div>
 
