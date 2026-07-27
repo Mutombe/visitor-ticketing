@@ -42,7 +42,7 @@ def _number():
 class GateConfig(models.Model):
     """Singleton venue settings (pk=1)."""
 
-    venue_name = models.CharField(max_length=120, default="Gatepass Leisure Park")
+    venue_name = models.CharField(max_length=120, default="Max Fun Entertainment")
     venue_city = models.CharField(max_length=80, default="Harare")
     zig_per_usd = models.DecimalField(max_digits=12, decimal_places=2, default=30)
     closing_time = models.TimeField(default=time(18, 0))  # full-day tickets expire here
@@ -60,9 +60,20 @@ class GateConfig(models.Model):
 
 
 class Package(models.Model):
-    name = models.CharField(max_length=80)               # Pool & Picnic / Game Park…
+    class Pricing(models.TextChoices):
+        HOURLY = "HOURLY", "Per hour"       # price × hours picked at the gate
+        FIXED = "FIXED", "Flat price"       # one price; duration fixed or until close
+
+    name = models.CharField(max_length=80)               # General Indoor Play / Museum Tour…
+    group = models.CharField(max_length=40, default="General")  # section on the gate screen
     description = models.CharField(max_length=200, blank=True)
     emoji = models.CharField(max_length=8, default="🎟️")
+    pricing = models.CharField(max_length=8, choices=Pricing.choices, default=Pricing.FIXED)
+    fixed_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="FIXED only: locked duration (e.g. 180 for Play & Movie). "
+                  "Blank = valid until closing time.",
+    )
     adult_price_usd = models.DecimalField(max_digits=10, decimal_places=2)
     child_price_usd = models.DecimalField(max_digits=10, decimal_places=2)
     vehicle_fee_usd = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -167,12 +178,20 @@ class Ticket(models.Model):
         return max(int(math.ceil(over)), 0)
 
     def overstay_fee_due_usd(self, at=None):
-        """Fee for time past expiry — per started half-hour, whole party."""
+        """Fee for time past expiry — per started half-hour, whole party.
+
+        Hourly packages overstay at their own hourly party rate (half-rate per
+        30-min block); flat packages use the package's overstay rate.
+        """
         end = at or self.exited_at or timezone.now()
         over_min = (end - self.expires_at).total_seconds() / 60
         if over_min <= 0:
             return Decimal("0")
         blocks = math.ceil(over_min / 30)
+        if self.package.pricing == Package.Pricing.HOURLY:
+            party_hour = (self.package.adult_price_usd * self.adults
+                          + self.package.child_price_usd * self.children)
+            return (blocks * party_hour / 2).quantize(Decimal("0.01"))
         return blocks * self.package.overstay_rate_usd
 
     def to_currency(self, usd_amount):

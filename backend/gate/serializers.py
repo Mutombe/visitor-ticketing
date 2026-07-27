@@ -10,7 +10,8 @@ class PackageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Package
         fields = [
-            "id", "name", "description", "emoji",
+            "id", "name", "group", "description", "emoji",
+            "pricing", "fixed_minutes",
             "adult_price_usd", "child_price_usd", "vehicle_fee_usd",
             "overstay_rate_usd",
         ]
@@ -74,7 +75,9 @@ class TicketSerializer(serializers.ModelSerializer):
 
 class IssueTicketSerializer(serializers.Serializer):
     package = serializers.PrimaryKeyRelatedField(queryset=Package.objects.filter(active=True))
-    time_option = serializers.PrimaryKeyRelatedField(queryset=TimeOption.objects.filter(active=True))
+    time_option = serializers.PrimaryKeyRelatedField(
+        queryset=TimeOption.objects.filter(active=True), required=False, allow_null=True
+    )
     adults = serializers.IntegerField(min_value=0, max_value=200)
     children = serializers.IntegerField(min_value=0, max_value=200, default=0)
     visitor_name = serializers.CharField(max_length=120, allow_blank=True, required=False, default="")
@@ -90,21 +93,38 @@ class IssueTicketSerializer(serializers.Serializer):
     def validate(self, data):
         if data["adults"] + data.get("children", 0) < 1:
             raise serializers.ValidationError("At least one visitor is required.")
+        pkg = data["package"]
+        opt = data.get("time_option")
+        if pkg.pricing == Package.Pricing.HOURLY and not (opt and opt.minutes):
+            raise serializers.ValidationError("Pick how many hours for this package.")
         return data
+
+    @staticmethod
+    def _duration(pkg, opt):
+        """(minutes, label) the ticket runs for, per the package's pricing."""
+        if pkg.pricing == Package.Pricing.HOURLY:
+            return opt.minutes, opt.label
+        if pkg.fixed_minutes:
+            h = pkg.fixed_minutes / 60
+            return pkg.fixed_minutes, f"{h:g} hour{'s' if h != 1 else ''}"
+        return None, "Until closing"
 
     def create(self, validated):
         config = GateConfig.get()
         pkg = validated["package"]
-        opt = validated["time_option"]
-        total_usd = (
+        minutes, label = self._duration(pkg, validated.get("time_option"))
+        per_person = (
             pkg.adult_price_usd * validated["adults"]
             + pkg.child_price_usd * validated.get("children", 0)
-            + (pkg.vehicle_fee_usd if validated.get("vehicle_reg") else Decimal("0"))
         )
+        if pkg.pricing == Package.Pricing.HOURLY:
+            per_person = per_person * Decimal(minutes) / Decimal(60)
+        total_usd = (per_person + (pkg.vehicle_fee_usd if validated.get("vehicle_reg") else Decimal("0"))
+                     ).quantize(Decimal("0.01"))
         t = Ticket(
             package=pkg,
-            duration_label=opt.label,
-            duration_minutes=opt.minutes,
+            duration_label=label,
+            duration_minutes=minutes,
             adults=validated["adults"],
             children=validated.get("children", 0),
             visitor_name=validated.get("visitor_name", ""),
@@ -116,7 +136,7 @@ class IssueTicketSerializer(serializers.Serializer):
             zig_per_usd=config.zig_per_usd,
             total_usd=total_usd,
             issued_by=validated.get("issued_by", ""),
-            expires_at=Ticket.expiry_for(opt.minutes, config),
+            expires_at=Ticket.expiry_for(minutes, config),
         )
         t.total = t.to_currency(total_usd)
         t.save()

@@ -10,9 +10,11 @@ class GateConfigAdmin(admin.ModelAdmin):
 
 @admin.register(Package)
 class PackageAdmin(admin.ModelAdmin):
-    list_display = ["name", "adult_price_usd", "child_price_usd",
-                    "vehicle_fee_usd", "overstay_rate_usd", "active", "sort"]
+    list_display = ["name", "group", "pricing", "fixed_minutes",
+                    "adult_price_usd", "child_price_usd",
+                    "overstay_rate_usd", "active", "sort"]
     list_editable = ["active", "sort"]
+    list_filter = ["group", "pricing"]
 
 
 @admin.register(TimeOption)

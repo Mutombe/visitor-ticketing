@@ -33,14 +33,19 @@ export default function GateSale() {
     setOpt((o) => o || cfg.time_options[0] || null);
   }, [cfg]);
 
+  const hourly = pkg?.pricing === "HOURLY";
+  const groups = useMemo(() => {
+    const g = {};
+    (cfg?.packages || []).forEach((p) => (g[p.group] = g[p.group] || []).push(p));
+    return g;
+  }, [cfg]);
+
   const totalUsd = useMemo(() => {
     if (!pkg) return 0;
-    return (
-      Number(pkg.adult_price_usd) * adults
-      + Number(pkg.child_price_usd) * children
-      + (reg.trim() ? Number(pkg.vehicle_fee_usd) : 0)
-    );
-  }, [pkg, adults, children, reg]);
+    let perPerson = Number(pkg.adult_price_usd) * adults + Number(pkg.child_price_usd) * children;
+    if (hourly) perPerson *= (opt?.minutes || 60) / 60;
+    return perPerson + (reg.trim() ? Number(pkg.vehicle_fee_usd) : 0);
+  }, [pkg, opt, hourly, adults, children, reg]);
 
   const total = currency === "ZIG" && cfg ? totalUsd * Number(cfg.zig_per_usd) : totalUsd;
 
@@ -50,7 +55,7 @@ export default function GateSale() {
     setErr("");
     try {
       const t = await api.issueTicket({
-        package: pkg.id, time_option: opt.id,
+        package: pkg.id, time_option: hourly ? opt.id : null,
         adults, children,
         visitor_name: name.trim(), phone: phone.trim(),
         vehicle_reg: reg.trim(), vehicle_type: vtype.trim(),
@@ -81,51 +86,60 @@ export default function GateSale() {
         <div className="stack" style={{ "--gap": "18px" }}>
           <div className="card card-p stack">
             <h3>1 · Package</h3>
-            <div className="dist-grid">
-              {cfg.packages.map((p) => (
-                <button key={p.id} type="button"
-                  className={`dist ${pkg?.id === p.id ? "selected" : ""}`}
-                  onClick={() => setPkg(p)}>
-                  <span className="dist-badge" style={{ fontSize: "1.5rem" }}>{p.emoji}</span>
-                  <span className="grow" style={{ minWidth: 0 }}>
-                    <strong className="clamp-1">{p.name}</strong>
-                    <span className="muted clamp-1" style={{ display: "block", fontSize: ".82rem" }}>
-                      {p.description}
-                    </span>
-                  </span>
-                  <span style={{ textAlign: "right" }}>
-                    <span className="price">{money(p.adult_price_usd)}</span>
-                    <span className="muted" style={{ display: "block", fontSize: ".76rem" }}>
-                      child {money(p.child_price_usd)}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
+            {Object.entries(groups).map(([group, list]) => (
+              <div key={group} className="stack" style={{ "--gap": "10px" }}>
+                <span className="eyebrow">{group} packages</span>
+                <div className="dist-grid">
+                  {list.map((p) => (
+                    <button key={p.id} type="button"
+                      className={`dist ${pkg?.id === p.id ? "selected" : ""}`}
+                      onClick={() => setPkg(p)}>
+                      <span className="dist-badge" style={{ fontSize: "1.5rem" }}>{p.emoji}</span>
+                      <span className="grow" style={{ minWidth: 0 }}>
+                        <strong className="clamp-1">{p.name}</strong>
+                        <span className="muted clamp-1" style={{ display: "block", fontSize: ".82rem" }}>
+                          {p.description}
+                        </span>
+                      </span>
+                      <span style={{ textAlign: "right" }}>
+                        <span className="price">{priceMain(p)}</span>
+                        <span className="muted" style={{ display: "block", fontSize: ".76rem" }}>
+                          {priceSub(p)}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="card card-p stack">
             <h3>2 · Time &amp; party</h3>
-            <div className="row wrap" style={{ gap: 8 }}>
-              {cfg.time_options.map((o) => (
-                <button key={o.id} type="button"
-                  className={`cat-chip ${opt?.id === o.id ? "active" : ""}`}
-                  onClick={() => setOpt(o)}>
-                  <Clock size={15} weight="bold" /> {o.label}
-                </button>
-              ))}
-            </div>
-            {opt && !opt.minutes && (
-              <p className="muted" style={{ fontSize: ".85rem" }}>
-                Full day tickets expire at closing time ({cfg.closing_time}).
-              </p>
+            {hourly ? (
+              <div className="row wrap" style={{ gap: 8 }}>
+                {cfg.time_options.map((o) => (
+                  <button key={o.id} type="button"
+                    className={`cat-chip ${opt?.id === o.id ? "active" : ""}`}
+                    onClick={() => setOpt(o)}>
+                    <Clock size={15} weight="bold" /> {o.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="chip gold" style={{ alignSelf: "flex-start" }}>
+                <Clock size={14} weight="bold" />
+                {pkg?.fixed_minutes
+                  ? `${pkg.fixed_minutes / 60} hours included`
+                  : `Valid until closing (${cfg.closing_time})`}
+              </span>
             )}
             <div className="grid-2">
               <div className="tt-row">
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <User size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Adults</strong>
-                    <span className="desc" style={{ display: "block" }}>{money(pkg?.adult_price_usd || 0)} each</span></span>
+                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.adult_price_usd, hourly)}</span></span>
                 </span>
                 <Qty value={adults} onChange={setAdults} />
               </div>
@@ -133,7 +147,7 @@ export default function GateSale() {
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <Baby size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Children</strong>
-                    <span className="desc" style={{ display: "block" }}>{money(pkg?.child_price_usd || 0)} each</span></span>
+                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.child_price_usd, hourly)}</span></span>
                 </span>
                 <Qty value={children} onChange={setChildren} />
               </div>
@@ -187,7 +201,8 @@ export default function GateSale() {
             <h3 className="row"><TicketIcon weight="fill" color="var(--green-600)" /> Summary</h3>
             <div className="info-list">
               <Row k="Package" v={pkg ? `${pkg.emoji} ${pkg.name}` : "—"} />
-              <Row k="Time" v={opt?.label || "—"} />
+              <Row k="Time" v={!pkg ? "—" : hourly ? (opt?.label || "—")
+                : pkg.fixed_minutes ? `${pkg.fixed_minutes / 60} hours` : "Until closing"} />
               <Row k="Party" v={`${adults} adult${adults === 1 ? "" : "s"}${children ? ` · ${children} child${children === 1 ? "" : "ren"}` : ""}`} />
               {reg.trim() && <Row k="Vehicle" v={`${reg.toUpperCase()}${vtype ? ` · ${vtype}` : ""}`} />}
             </div>
@@ -202,7 +217,8 @@ export default function GateSale() {
               </span>
             )}
             {err && <span className="chip red">{err}</span>}
-            <button className="btn btn-gold btn-lg btn-block" disabled={busy || !pkg || !opt || adults + children < 1}
+            <button className="btn btn-gold btn-lg btn-block"
+              disabled={busy || !pkg || (hourly && !opt) || adults + children < 1}
               onClick={issue}>
               {busy ? "Issuing…" : <>Issue ticket <ArrowRight weight="bold" /></>}
             </button>
@@ -222,4 +238,28 @@ function Row({ k, v }) {
       <div className="grow"><div className="k">{k}</div><div className="v">{v}</div></div>
     </div>
   );
+}
+
+/* "$10/hr" · "$15" · "$18" — headline price on a package card */
+function priceMain(p) {
+  const top = Math.max(Number(p.adult_price_usd), Number(p.child_price_usd));
+  return p.pricing === "HOURLY" ? `${money(top)}/hr` : money(top);
+}
+
+/* "per person" · "per child · 6 hrs" · "3 hrs" — the fine print */
+function priceSub(p) {
+  const a = Number(p.adult_price_usd), c = Number(p.child_price_usd);
+  const parts = [];
+  if (a === 0) parts.push("per child");
+  else if (c === 0) parts.push("per adult");
+  else if (a !== c) parts.push(`child ${money(c)}`);
+  else parts.push("per person");
+  if (p.pricing === "FIXED" && p.fixed_minutes) parts.push(`${p.fixed_minutes / 60} hrs`);
+  return parts.join(" · ");
+}
+
+function eachLabel(price, hourly) {
+  const n = Number(price || 0);
+  if (n === 0) return "free";
+  return hourly ? `${money(n)}/hr each` : `${money(n)} each`;
 }
