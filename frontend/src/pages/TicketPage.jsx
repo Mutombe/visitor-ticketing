@@ -168,7 +168,7 @@ export default function TicketPage() {
           </a>
         </div>
         <a className="btn btn-ghost btn-block"
-          href={`mailto:?subject=${encodeURIComponent(`Your ${t.venue_name} ticket ${t.number}`)}&body=${encodeURIComponent(share)}`}>
+          href={`mailto:${t.email || ""}?subject=${encodeURIComponent(`Your ${t.venue_name} ticket ${t.number}`)}&body=${encodeURIComponent(share)}`}>
           <EnvelopeSimple weight="fill" /> Email ticket
         </a>
         <Link to="/" className="btn btn-ghost btn-block"><Plus weight="bold" /> New entry</Link>

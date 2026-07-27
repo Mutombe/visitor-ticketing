@@ -45,7 +45,7 @@ class TicketSerializer(serializers.ModelSerializer):
         fields = [
             "number", "qr_token", "package_name", "package_emoji",
             "duration_label", "duration_minutes",
-            "adults", "children", "visitors", "visitor_name", "phone",
+            "adults", "children", "visitors", "visitor_name", "phone", "email",
             "vehicle_reg", "vehicle_type",
             "currency", "payment_method", "total", "total_usd",
             "status", "state", "issued_at", "expires_at", "exited_at",
@@ -94,6 +94,7 @@ class IssueTicketSerializer(serializers.Serializer):
     children = serializers.IntegerField(min_value=0, max_value=200, default=0)
     visitor_name = serializers.CharField(max_length=120, allow_blank=True, required=False, default="")
     phone = serializers.CharField(max_length=32, allow_blank=True, required=False, default="")
+    email = serializers.EmailField(allow_blank=True, required=False, default="")
     vehicle_reg = serializers.CharField(max_length=20, allow_blank=True, required=False, default="")
     vehicle_type = serializers.CharField(max_length=40, allow_blank=True, required=False, default="")
     currency = serializers.ChoiceField(choices=["USD", "ZIG"], default="USD")
@@ -158,6 +159,8 @@ class IssueTicketSerializer(serializers.Serializer):
             children=validated.get("children", 0),
             visitor_name=validated.get("visitor_name", ""),
             phone=validated.get("phone", ""),
+            email=validated.get("email", ""),
+            buyer=validated.get("buyer"),
             vehicle_reg=validated.get("vehicle_reg", "").upper(),
             vehicle_type=validated.get("vehicle_type", ""),
             currency=validated["currency"],

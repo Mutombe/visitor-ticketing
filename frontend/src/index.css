@@ -673,3 +673,17 @@ button { font-family: inherit; }
   .receipt .r-qr { display: flex; justify-content: center; margin: 6px 0; }
   @page { size: 80mm auto; margin: 0; }
 }
+
+/* ---- Sign-in modal ---- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(10, 26, 61, .45); backdrop-filter: blur(4px);
+  display: grid; place-items: center; padding: 18px;
+}
+.modal { width: 100%; max-width: 400px; padding: 22px; box-shadow: var(--shadow-lg); }
+.modal-x {
+  width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+  display: grid; place-items: center;
+}
+.modal-x:hover { background: var(--paper-2); }

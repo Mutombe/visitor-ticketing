@@ -2,19 +2,23 @@ from collections import Counter
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
+import requests as http
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import (
-    BandAssignment, GateConfig, Package, Sighting, Ticket, TimeOption,
-    Wristband, Zone,
+    BandAssignment, GateConfig, Package, Profile, Role, Sighting, Ticket,
+    TimeOption, Wristband, Zone,
 )
 from .permissions import AdminOnly, AnyStaff, CanReport, CanScan, CanSell, user_role
 from .serializers import (
@@ -27,11 +31,14 @@ from .serializers import (
 
 # --- Auth --------------------------------------------------------------------
 def _user_payload(user):
+    profile = getattr(user, "profile", None)
     return {
         "id": user.id,
         "username": user.username,
-        "name": user.first_name or user.username,
+        "name": user.get_full_name() or user.first_name or user.username,
+        "email": user.email,
         "role": user_role(user),
+        "avatar_url": profile.avatar_url if profile else "",
     }
 
 
@@ -49,6 +56,54 @@ def login(request):
 
 
 @api_view(["POST"])
+@permission_classes([AllowAny])
+def google_login(request):
+    """Optional visitor sign-in. Accepts {credential} (GIS) or {access_token} (popup).
+    Staff keep username/password; Google accounts get the VISITOR role."""
+    if not settings.GOOGLE_CLIENT_ID:
+        return Response({"detail": "Google sign-in is not configured."}, status=400)
+    credential = request.data.get("credential")
+    access_token = request.data.get("access_token")
+    info = None
+    if credential:
+        try:
+            info = google_id_token.verify_oauth2_token(
+                credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+        except ValueError as exc:
+            return Response({"detail": f"Invalid Google token: {exc}"}, status=401)
+    elif access_token:
+        try:
+            ti = http.get("https://oauth2.googleapis.com/tokeninfo",
+                          params={"access_token": access_token}, timeout=10).json()
+            if settings.GOOGLE_CLIENT_ID not in (ti.get("aud"), ti.get("azp")):
+                return Response({"detail": "Token not issued for this app."}, status=401)
+            info = http.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                            headers={"Authorization": f"Bearer {access_token}"},
+                            timeout=10).json()
+        except Exception as exc:
+            return Response({"detail": f"Could not verify Google sign-in: {exc}"}, status=401)
+    else:
+        return Response({"detail": "Missing credential."}, status=400)
+
+    email = info.get("email", "")
+    if not email:
+        return Response({"detail": "Google account has no email."}, status=400)
+    user, _ = User.objects.get_or_create(
+        username=email,
+        defaults={"email": email,
+                  "first_name": info.get("given_name", "")[:30],
+                  "last_name": info.get("family_name", "")[:150]},
+    )
+    # New Google users are visitors; an existing staff profile keeps its role.
+    profile, _ = Profile.objects.get_or_create(user=user, defaults={"role": Role.VISITOR})
+    profile.google_sub = info.get("sub", "")
+    profile.avatar_url = info.get("picture", "")
+    profile.save()
+    token, _ = Token.objects.get_or_create(user=user)
+    return Response({"token": token.key, "user": _user_payload(user)})
+
+
+@api_view(["POST"])
 def logout(request):
     Token.objects.filter(user=request.user).delete()
     return Response(status=204)
@@ -60,19 +115,56 @@ def me(request):
 
 
 # --- Gate --------------------------------------------------------------------
-@api_view(["GET"])
-@permission_classes([AnyStaff])
-def config(request):
-    """Everything the gate screen needs to price a ticket."""
+def _config_payload():
     c = GateConfig.get()
-    return Response({
+    return {
         "venue_name": c.venue_name,
         "venue_city": c.venue_city,
         "zig_per_usd": str(c.zig_per_usd),
         "closing_time": c.closing_time.strftime("%H:%M"),
         "packages": PackageSerializer(Package.objects.filter(active=True), many=True).data,
         "time_options": TimeOptionSerializer(TimeOption.objects.filter(active=True), many=True).data,
-    })
+    }
+
+
+@api_view(["GET"])
+@permission_classes([AnyStaff])
+def config(request):
+    """Everything the gate screen needs to price a ticket."""
+    return Response(_config_payload())
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def public_config(request):
+    """The public storefront: packages and prices are public information."""
+    return Response(_config_payload())
+
+
+PUBLIC_ORDER_FIELDS = {"package", "time_option", "adults", "children",
+                       "visitor_name", "phone", "email", "currency", "payment_method"}
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def public_order(request):
+    """Visitors buy their own ticket online — no account needed.
+    Payment is recorded as paid (simulated) — wire Paynow/EcoCash checkout next."""
+    data = {k: v for k, v in request.data.items() if k in PUBLIC_ORDER_FIELDS}
+    ser = IssueTicketSerializer(data=data)
+    ser.is_valid(raise_exception=True)
+    t = ser.save(
+        issued_by="Online",
+        buyer=request.user if getattr(request.user, "is_authenticated", False) else None,
+    )
+    return Response(TicketSerializer(t).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_tickets(request):
+    qs = Ticket.objects.select_related("package").filter(buyer=request.user)[:50]
+    return Response(TicketSerializer(qs, many=True).data)
 
 
 @api_view(["GET", "POST"])

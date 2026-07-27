@@ -22,11 +22,14 @@ class Role(models.TextChoices):
     MANAGER = "MANAGER", "Manager"            # reports + all gate operations
     CASHIER = "CASHIER", "Gate cashier"       # issue tickets, scan, children
     SECURITY = "SECURITY", "Security"         # scan exits, children
+    VISITOR = "VISITOR", "Visitor"            # public Google sign-in — own tickets only
 
 
 class Profile(models.Model):
     user = models.OneToOneField(User, related_name="profile", on_delete=models.CASCADE)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.CASHIER)
+    avatar_url = models.URLField(blank=True)
+    google_sub = models.CharField(max_length=64, blank=True)
 
     def __str__(self):
         return f"{self.user.username} · {self.role}"
@@ -143,6 +146,9 @@ class Ticket(models.Model):
     children = models.PositiveSmallIntegerField(default=0)
     visitor_name = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
+    buyer = models.ForeignKey(   # signed-in visitor who bought online
+        User, related_name="tickets", null=True, blank=True, on_delete=models.SET_NULL)
     vehicle_reg = models.CharField(max_length=20, blank=True)
     vehicle_type = models.CharField(max_length=40, blank=True)
 

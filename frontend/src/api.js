@@ -45,8 +45,15 @@ export const api = {
   // auth
   login: (username, password) =>
     req("/auth/login/", { method: "POST", body: JSON.stringify({ username, password }) }),
+  googleLogin: (payload) =>
+    req("/auth/google/", { method: "POST", body: JSON.stringify(payload) }),
   logout: () => req("/auth/logout/", { method: "POST" }),
   me: () => req("/auth/me/"),
+  // public storefront
+  publicConfig: () => req("/public/config/"),
+  publicOrder: (payload) =>
+    req("/public/orders/", { method: "POST", body: JSON.stringify(payload) }),
+  myTickets: () => req("/tickets/mine/"),
   // gate
   config: () => req("/config/"),
   issueTicket: (payload) => req("/tickets/", { method: "POST", body: JSON.stringify(payload) }),
@@ -80,6 +87,7 @@ export const api = {
 export const ROLES = {
   ADMIN: "Administrator", MANAGER: "Manager", CASHIER: "Gate cashier", SECURITY: "Security",
 };
+export const isStaff = (r) => ["ADMIN", "MANAGER", "CASHIER", "SECURITY"].includes(r);
 export const canSell = (r) => ["ADMIN", "MANAGER", "CASHIER"].includes(r);
 export const canReport = (r) => ["ADMIN", "MANAGER"].includes(r);
 export const isAdmin = (r) => r === "ADMIN";

@@ -5,11 +5,16 @@ from . import views
 urlpatterns = [
     # auth
     path("auth/login/", views.login),
+    path("auth/google/", views.google_login),
     path("auth/logout/", views.logout),
     path("auth/me/", views.me),
+    # public storefront (no sign-in required)
+    path("public/config/", views.public_config),
+    path("public/orders/", views.public_order),
     # gate
     path("config/", views.config),
     path("tickets/", views.tickets),
+    path("tickets/mine/", views.my_tickets),
     path("tickets/<str:ref>/", views.ticket_lookup),
     path("tickets/<str:ref>/exit/", views.ticket_exit),
     path("tickets/<str:ref>/bands/", views.band_assign),
