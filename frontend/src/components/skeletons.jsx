@@ -3,6 +3,45 @@ function Sk({ w = "100%", h = 14, r = 8, style }) {
   return <div className="skel" style={{ width: w, height: h, borderRadius: r, flex: "none", ...style }} />;
 }
 
+/* Scoped: just the package rows inside an otherwise-static card. */
+export function PackageRowsSkeleton({ count = 4 }) {
+  return (
+    <div className="dist-grid cascade">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="dist" style={{ pointerEvents: "none" }}>
+          <Sk w={58} h={58} r={15} />
+          <div className="grow stack" style={{ "--gap": "8px" }}>
+            <Sk w="60%" h={14} /><Sk w="85%" h={10} />
+          </div>
+          <Sk w={44} h={20} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* Scoped: hour chips while time options load. */
+export function ChipsSkeleton({ count = 4 }) {
+  return (
+    <div className="row wrap cascade" style={{ gap: 8 }}>
+      {Array.from({ length: count }).map((_, i) => <Sk key={i} w={92} h={38} r={999} />)}
+    </div>
+  );
+}
+
+/* Scoped: stat tiles while live numbers load. */
+export function StatTilesSkeleton({ count = 4 }) {
+  return (
+    <div className="stats cascade">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="stat stack" style={{ "--gap": "8px" }}>
+          <Sk w="65%" h={26} /><Sk w="45%" h={10} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Gate sale screen: package rows + time chips on the left, summary on the right */
 export function GateSkeleton() {
   return (

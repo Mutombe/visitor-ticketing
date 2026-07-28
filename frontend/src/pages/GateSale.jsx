@@ -5,7 +5,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, money } from "../api";
 import { PayPicker, Qty } from "../components/ui.jsx";
-import { GateSkeleton } from "../components/skeletons.jsx";
+import { ChipsSkeleton, PackageRowsSkeleton } from "../components/skeletons.jsx";
 import { useCached } from "../useCached.js";
 import { setCached } from "../cache.js";
 
@@ -71,11 +71,7 @@ export default function GateSale() {
     }
   }
 
-  if (cfgErr && !cfg) return (
-    <div className="container section"><div className="chip red">{cfgErr.message}</div></div>
-  );
-  if (!cfg) return <GateSkeleton />;
-
+  // Static shell renders instantly; only data-driven areas skeleton below.
   return (
     <div className="container section stack fade-in" style={{ "--gap": "22px" }}>
       <div>
@@ -88,10 +84,12 @@ export default function GateSale() {
         <div className="stack" style={{ "--gap": "18px" }}>
           <div className="card card-p stack">
             <h3>1 · Package</h3>
-            {Object.entries(groups).map(([group, list]) => (
+            {cfgErr && !cfg && <span className="chip red">{cfgErr.message}</span>}
+            {!cfg && !cfgErr && <PackageRowsSkeleton count={5} />}
+            {cfg && Object.entries(groups).map(([group, list]) => (
               <div key={group} className="stack" style={{ "--gap": "10px" }}>
                 <span className="eyebrow">{group} packages</span>
-                <div className="dist-grid">
+                <div className="dist-grid cascade">
                   {list.map((p) => (
                     <button key={p.id} type="button"
                       className={`dist ${pkg?.id === p.id ? "selected" : ""}`}
@@ -118,8 +116,8 @@ export default function GateSale() {
 
           <div className="card card-p stack">
             <h3>2 · Time &amp; party</h3>
-            {hourly ? (
-              <div className="row wrap" style={{ gap: 8 }}>
+            {!pkg ? <ChipsSkeleton /> : hourly ? (
+              <div className="row wrap cascade" style={{ gap: 8 }}>
                 {cfg.time_options.map((o) => (
                   <button key={o.id} type="button"
                     className={`cat-chip ${opt?.id === o.id ? "active" : ""}`}
@@ -141,7 +139,7 @@ export default function GateSale() {
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <User size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Adults</strong>
-                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.adult_price_usd, hourly)}</span></span>
+                    <span className="desc" style={{ display: "block" }}>{pkg ? eachLabel(pkg.adult_price_usd, hourly) : "—"}</span></span>
                 </span>
                 <Qty value={adults} onChange={setAdults} />
               </div>
@@ -149,7 +147,7 @@ export default function GateSale() {
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <Baby size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Children</strong>
-                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.child_price_usd, hourly)}</span></span>
+                    <span className="desc" style={{ display: "block" }}>{pkg ? eachLabel(pkg.child_price_usd, hourly) : "—"}</span></span>
                 </span>
                 <Qty value={children} onChange={setChildren} />
               </div>
@@ -253,7 +251,7 @@ export default function GateSale() {
               <span className="muted">Total</span>
               <span className="tt-price" style={{ fontSize: "1.7rem" }}>{money(total, currency)}</span>
             </div>
-            {currency === "ZIG" && (
+            {currency === "ZIG" && cfg && (
               <span className="muted" style={{ fontSize: ".8rem" }}>
                 ≈ {money(totalUsd)} at {Number(cfg.zig_per_usd)} ZiG/USD
               </span>

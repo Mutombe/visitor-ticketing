@@ -7,7 +7,7 @@ import {
 import { api, money } from "../api";
 import { useAuth } from "../auth.jsx";
 import { PayPicker, Qty } from "../components/ui.jsx";
-import { GateSkeleton } from "../components/skeletons.jsx";
+import { ChipsSkeleton, PackageRowsSkeleton } from "../components/skeletons.jsx";
 import { useCached } from "../useCached.js";
 import { setCached } from "../cache.js";
 
@@ -74,11 +74,8 @@ export default function Buy() {
     }
   }
 
-  if (cfgErr && !cfg) return (
-    <div className="container section"><div className="chip red">{cfgErr.message}</div></div>
-  );
-  if (!cfg) return <GateSkeleton />;
-
+  // The static shell (banner, forms, payment, summary) renders instantly —
+  // only the data-driven areas below show scoped skeletons while config loads.
   return (
     <div className="container section stack fade-in" style={{ "--gap": "26px" }}>
       {/* Hero */}
@@ -103,10 +100,12 @@ export default function Buy() {
         <div className="stack" style={{ "--gap": "18px" }}>
           <div className="card card-p stack">
             <h3>Choose your package</h3>
-            {Object.entries(groups).map(([group, list]) => (
+            {cfgErr && !cfg && <span className="chip red">{cfgErr.message}</span>}
+            {!cfg && !cfgErr && <PackageRowsSkeleton count={5} />}
+            {cfg && Object.entries(groups).map(([group, list]) => (
               <div key={group} className="stack" style={{ "--gap": "10px" }}>
                 <span className="eyebrow">{group}</span>
-                <div className="dist-grid">
+                <div className="dist-grid cascade">
                   {list.map((p) => (
                     <button key={p.id} type="button"
                       className={`dist ${pkg?.id === p.id ? "selected" : ""}`}
@@ -133,8 +132,8 @@ export default function Buy() {
 
           <div className="card card-p stack">
             <h3>Time &amp; tickets</h3>
-            {hourly ? (
-              <div className="row wrap" style={{ gap: 8 }}>
+            {!pkg ? <ChipsSkeleton /> : hourly ? (
+              <div className="row wrap cascade" style={{ gap: 8 }}>
                 {cfg.time_options.map((o) => (
                   <button key={o.id} type="button"
                     className={`cat-chip ${opt?.id === o.id ? "active" : ""}`}
@@ -156,7 +155,7 @@ export default function Buy() {
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <User size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Adults</strong>
-                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.adult_price_usd, hourly)}</span></span>
+                    <span className="desc" style={{ display: "block" }}>{pkg ? eachLabel(pkg.adult_price_usd, hourly) : "—"}</span></span>
                 </span>
                 <Qty value={adults} onChange={setAdults} />
               </div>
@@ -164,7 +163,7 @@ export default function Buy() {
                 <span className="tt-info row" style={{ gap: 10 }}>
                   <Baby size={20} weight="fill" color="var(--green-600)" />
                   <span><strong className="name">Children</strong>
-                    <span className="desc" style={{ display: "block" }}>{eachLabel(pkg?.child_price_usd, hourly)}</span></span>
+                    <span className="desc" style={{ display: "block" }}>{pkg ? eachLabel(pkg.child_price_usd, hourly) : "—"}</span></span>
                 </span>
                 <Qty value={children} onChange={setChildren} />
               </div>
@@ -218,7 +217,7 @@ export default function Buy() {
               <span className="muted">Total</span>
               <span className="tt-price" style={{ fontSize: "1.7rem" }}>{money(total, currency)}</span>
             </div>
-            {currency === "ZIG" && (
+            {currency === "ZIG" && cfg && (
               <span className="muted" style={{ fontSize: ".8rem" }}>
                 ≈ {money(totalUsd)} at {Number(cfg.zig_per_usd)} ZiG/USD
               </span>

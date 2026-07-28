@@ -52,7 +52,7 @@ export default function Children() {
             {q ? "Nothing matches this search." : "Wristbands assigned at the gate will appear here with their live zone."}
           </Empty>
         ) : (
-          <div className="ev-grid">
+          <div className="ev-grid cascade">
             {rows.map((c) => (
               <div key={c.id} className="card card-p stack" style={{ "--gap": "10px" }}>
                 <div className="spread">

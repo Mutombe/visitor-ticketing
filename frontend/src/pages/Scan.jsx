@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, fmtRemaining, fmtTime, money, remainingSecs, PAYMENTS } from "../api";
 import { PayPicker, Stat } from "../components/ui.jsx";
+import { StatTilesSkeleton } from "../components/skeletons.jsx";
 import { getCached, setCached } from "../cache.js";
 
 export default function Scan() {
@@ -68,8 +69,9 @@ export default function Scan() {
         <h1>Exit gate</h1>
       </div>
 
+      {!stats && <StatTilesSkeleton />}
       {stats && (
-        <div className="stats">
+        <div className="stats cascade">
           <Stat v={stats.inside_visitors} k={<><UsersThree size={13} weight="fill" /> Visitors inside</>} />
           <Stat v={stats.overdue_tickets} k={<><HourglassHigh size={13} weight="fill" /> Overdue inside</>} />
           <Stat v={stats.children_banded} k={<><Baby size={13} weight="fill" /> Kids on wristbands</>} />
@@ -174,7 +176,7 @@ export default function Scan() {
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead><tr><th>Ticket</th><th>Package</th><th>Party</th><th>Over by</th><th>Owes</th></tr></thead>
-              <tbody>
+              <tbody className="cascade">
                 {stats.overdue.map((o) => (
                   <tr key={o.number} style={{ cursor: "pointer" }} onClick={() => lookup(o.qr_token)}>
                     <td style={{ color: "var(--green-700)", fontWeight: 700 }}>{o.number}</td>
@@ -197,7 +199,7 @@ export default function Scan() {
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead><tr><th>Ticket</th><th>Package</th><th>Out</th><th>Overtime</th></tr></thead>
-              <tbody>
+              <tbody className="cascade">
                 {stats.recent_exits.map((o) => (
                   <tr key={o.number}>
                     <td className="muted">{o.number}</td>

@@ -32,7 +32,7 @@ export default function MyTickets() {
           action={<Link to="/" className="btn btn-primary">Buy a ticket</Link>}>
           Tickets you buy while signed in will appear here.
         </Empty>
-      ) : rows.map((t) => {
+      ) : <div className="stack cascade" style={{ "--gap": "16px" }}>{rows.map((t) => {
         const secs = t.status === "ACTIVE" ? remainingSecs(t.expires_at) : 0;
         return (
           <Link key={t.number} to={`/t/${t.qr_token}`} className="tkt-wrap">
@@ -58,7 +58,7 @@ export default function MyTickets() {
             </div>
           </Link>
         );
-      })}
+      })}</div>}
     </div>
   );
 }

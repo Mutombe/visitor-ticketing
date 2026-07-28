@@ -64,7 +64,7 @@ export default function History() {
                   <th>Paid</th><th>Status</th><th className="col-desktop">Entered</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="cascade">
                 {rows.map((t) => <RowT key={t.number} t={t} />)}
               </tbody>
             </table>

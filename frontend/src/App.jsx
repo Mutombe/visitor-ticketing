@@ -16,12 +16,29 @@ export default function App() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [pathname]);
 
-  // Warm the API (free-tier backends sleep) and pre-fill caches.
+  // Priority loading: warm the API immediately (free-tier backends sleep),
+  // then prefetch each role's likely-next screens while the browser is idle,
+  // so navigation paints instantly from cache.
   useEffect(() => {
     api.publicConfig().then((c) => setCached("public-config", c)).catch(() => {});
-    if (user && canSell(user.role)) {
+    if (!user) return;
+    if (canSell(user.role)) {
       api.config().then((c) => setCached("config", c)).catch(() => {});
     }
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 900));
+    const handle = idle(() => {
+      const today = new Date().toISOString().slice(0, 10);
+      if (isStaff(user.role)) {
+        api.security().then((s) => setCached("security", s)).catch(() => {});
+        api.tickets({ q: "", state: "", date: today })
+          .then((r) => setCached(`hist:${today}::`, r)).catch(() => {});
+      }
+      if (canReport(user.role)) {
+        api.reports({ from: today, to: today })
+          .then((r) => setCached(`reports:${today}:${today}`, r)).catch(() => {});
+      }
+    });
+    return () => (window.cancelIdleCallback || clearTimeout)(handle);
   }, [user]);
 
   const role = user?.role;

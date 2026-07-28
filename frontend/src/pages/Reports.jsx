@@ -49,7 +49,7 @@ export default function Reports() {
           </div>
 
           <div className="grid-2">
-            <div className="card card-p stack">
+            <div className="card card-p stack cascade">
               <h3>Package mix</h3>
               {d.package_mix.length === 0 && <p className="muted">No sales in this range.</p>}
               {d.package_mix.map((p) => (
@@ -59,7 +59,7 @@ export default function Reports() {
                   pct={(p.tickets / (d.tickets || 1)) * 100} />
               ))}
             </div>
-            <div className="card card-p stack">
+            <div className="card card-p stack cascade">
               <h3>Payment mix</h3>
               {Object.entries(d.payment_mix).sort((a, b) => b[1] - a[1]).map(([m, n]) => {
                 const p = PAYMENTS[m] || { label: m, color: "#999", short: "?" };
@@ -77,7 +77,7 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="card card-p stack">
+          <div className="card card-p stack cascade">
             <h3>Staff activity</h3>
             {(d.staff_activity || []).map((s) => (
               <MixBar key={s.name}
@@ -111,7 +111,7 @@ export default function Reports() {
             <div style={{ overflowX: "auto" }}>
               <table className="tbl">
                 <thead><tr><th>Ticket</th><th>Package</th><th>Party</th><th>Paid</th><th className="hide-mobile">Time</th></tr></thead>
-                <tbody>
+                <tbody className="cascade">
                   {d.recent.map((t) => (
                     <tr key={t.number}>
                       <td className="muted">{t.number}</td>
