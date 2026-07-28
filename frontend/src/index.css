@@ -715,3 +715,18 @@ button { font-family: inherit; }
 @media (min-width: 760px) {
   .dist-grid > .dist:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
+
+/* ---- Package card art (icon badge + tint wash + watermark) ---- */
+.dist { position: relative; overflow: hidden; }
+.dist > * { position: relative; z-index: 1; }
+.dist { background: linear-gradient(105deg, var(--pkg-tint, var(--surface)) 0%, var(--surface) 55%); }
+.dist-mark {
+  position: absolute; right: -18px; bottom: -24px; z-index: 0 !important;
+  opacity: .07; pointer-events: none; transform: rotate(-8deg);
+}
+.dist.selected {
+  background:
+    linear-gradient(105deg, var(--pkg-tint, var(--green-50)) 0%, transparent 55%),
+    linear-gradient(180deg, var(--green-50), var(--surface));
+}
+.dist.selected .dist-mark { opacity: .1; }

@@ -5,6 +5,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, money } from "../api";
 import { PayPicker, Qty } from "../components/ui.jsx";
+import { PackageBadge, PackageMark, packageArt } from "../packageArt.jsx";
 import { ChipsSkeleton, PackageRowsSkeleton } from "../components/skeletons.jsx";
 import { useCached } from "../useCached.js";
 import { setCached } from "../cache.js";
@@ -93,8 +94,10 @@ export default function GateSale() {
                   {list.map((p) => (
                     <button key={p.id} type="button"
                       className={`dist ${pkg?.id === p.id ? "selected" : ""}`}
+                      style={{ "--pkg-tint": packageArt(p).tint }}
                       onClick={() => setPkg(p)}>
-                      <span className="dist-badge" style={{ fontSize: "1.5rem" }}>{p.emoji}</span>
+                      <PackageMark pkg={p} />
+                      <PackageBadge pkg={p} />
                       <span className="grow" style={{ minWidth: 0 }}>
                         <strong className="clamp-1">{p.name}</strong>
                         <span className="muted clamp-1" style={{ display: "block", fontSize: ".82rem" }}>
